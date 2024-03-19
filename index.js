@@ -25,7 +25,18 @@ const verifyToken = (req, res, next) =>{
     next()
   })
 
-}
+};
+// const verifyAdmin = async (req, res, next)=>{
+//   const email = req.decoded.email;
+//   const query = {email:email};
+//   const user = await usercollection.findOne(query);
+//   console.log(user)
+//   const isAdmin = user?.role === 'Admin';
+//   if (!isAdmin) {
+//     return res.status(403).send({message:'Forbidden Access'})
+//   }
+//   next();
+// }
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -45,6 +56,17 @@ async function run() {
     const usercollection = client.db("Restaurant-Server").collection("users");
     const menucollection = client.db("Restaurant-Server").collection("menu");
     const cartscollection = client.db("Restaurant-Server").collection("carts");
+    const verifyAdmin = async (req, res, next)=>{
+      const email = req.decoded.email;
+      const query = {email:email};
+      const user = await usercollection.findOne(query);
+      console.log(user)
+      const isAdmin = user?.role === 'Admin';
+      if (!isAdmin) {
+        return res.status(403).send({message:'Forbidden Access'})
+      }
+      next();
+    }
     // Jwt Relate Api-----------
     app.post('/jwt', async(req, res)=>{
       const user = req.body;
@@ -65,20 +87,20 @@ async function run() {
       res.send(result);
     })
     // get Allusers-----------
-    app.get('/users',verifyToken, async(req, res)=>{
+    app.get('/users',verifyToken, verifyAdmin, async(req, res)=>{
      
       const result = await usercollection.find().toArray();
       res.send(result);
     })
     // Delete Users----------------
-    app.delete('/users/:id', async(req, res)=>{
+    app.delete('/users/:id',verifyToken, verifyAdmin, async(req, res)=>{
       const id = req.params.id;
       const query = {_id: new ObjectId(id)};
       const result = await usercollection.deleteOne(query);
       res.send(result);
     });
     // Created an admin-------
-    app.patch('/users/admin/:id', async(req, res)=>{
+    app.patch('/users/admin/:id',verifyToken, verifyAdmin, async(req, res)=>{
       const id = req.params.id;
       const filter = {_id: new ObjectId(id)};
       const updateDoc = {
@@ -88,11 +110,38 @@ async function run() {
       };
       const result = await usercollection.updateOne(filter, updateDoc);
       res.send(result);
+    });
+    // Find admin / user ----
+    app.get('/users/admin/:email',verifyToken, async(req, res)=>{
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({message:'Unauthorzed Access'})
+      }
+      const query = {email:email};
+      const user = await usercollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === 'Admin'
+      }
+      res.send({admin});
+    })
+    // Post menu item ------------
+    app.post('/menu', verifyToken, verifyAdmin, async(req, res)=>{
+      const menulist = req.body;
+      const result = await menucollection.insertOne(menulist);
+      res.send(result)
     })
     // Get all Menu ------------
     app.get('/menu', async (req, res) => {
       const result = await menucollection.find().toArray();
       res.send(result)
+    })
+    // Menu Deleta ------------
+    app.delete('/menu/:id',  verifyToken, verifyAdmin, async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await menucollection.deleteOne(query);
+      res.send(result);
     })
     // Add to Add to carts Data
     app.post('/carts', async (req, res) => {
