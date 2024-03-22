@@ -2,10 +2,10 @@ const express = require('express')
 const app = express()
 var jwt = require('jsonwebtoken');
 const cors = require('cors');
-// const stripe = require("stripe")(process.env.STRIPE_KEY);
+// const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const stripe = require("stripe")('sk_test_51Ow6nvRtkUz25OCJRU02vDUeCNmj0L1I57tGmzQ1lF3cnVjs9Akn09iPX6FTYtdPIyGMyh6ijb4347XNdzWY4iRo00Wv86EHkD');
 require('dotenv').config();
-
+console.log()
 const port = process.env.PORT || 5000;
 
 // MedalWar.........
@@ -62,7 +62,7 @@ async function run() {
     const cartscollection = client.db("Restaurant-Server").collection("carts");
     const paymentscollection = client.db("Restaurant-Server").collection("payment");
     const verifyToken = (req, res, next) => {
-      console.log('hhhhhhhhhh', req.headers.authoriztion);
+      // console.log('hhhhhhhhhh', req.headers.authoriztion);
       if (!req.headers.authoriztion) {
         return res.status(401).send({ message: 'Forbidden Access' })
       }
@@ -94,7 +94,7 @@ async function run() {
       const { price } = req.body;
       const amount = parseInt(price * 100);
       // const amount = parseInt(parseFloat(price) * 100);
-      console.log(amount)
+      // console.log(amount)
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
         currency: "usd",
@@ -128,7 +128,7 @@ async function run() {
 
     // Payment------------------END----
     // Stats or Analyics------------Start
-    app.get('/admin-Analyics', async (req, res) => {
+    app.get('/admin-Analyics', verifyToken, verifyAdmin, async (req, res) => {
       const users = await usercollection.estimatedDocumentCount();
       const menus = await menucollection.estimatedDocumentCount();
       const oders = await paymentscollection.estimatedDocumentCount();
@@ -151,7 +151,7 @@ async function run() {
       })
     });
     // using Aggregate pip line for stats----
-    app.get('/order-stats', async (req, res) => {
+    app.get('/order-stats', verifyToken, verifyAdmin, async (req, res) => {
       
       const result = await paymentscollection.aggregate([
 
@@ -324,10 +324,10 @@ async function run() {
     })
 
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.connect();
+    // // Send a ping to confirm a successful connection
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
