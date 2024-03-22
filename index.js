@@ -58,6 +58,7 @@ async function run() {
   try {
     const usercollection = client.db("Restaurant-Server").collection("users");
     const menucollection = client.db("Restaurant-Server").collection("menu");
+    const newMenucollection = client.db("Restaurant-Server").collection("newMenu");
     const cartscollection = client.db("Restaurant-Server").collection("carts");
     const paymentscollection = client.db("Restaurant-Server").collection("payment");
     const verifyToken = (req, res, next) => {
@@ -66,7 +67,7 @@ async function run() {
         return res.status(401).send({ message: 'Forbidden Access' })
       }
       // Bearer eyJhbGciOiJ ----- token get clint site and divide by " " spase and get [1] 2nd array ;
-    
+
       const token = req.headers.authoriztion.split(' ')[1];
       jwt.verify(token, process.env.ACC_TOKEN, (err, decoded) => {
         if (err) {
@@ -75,13 +76,13 @@ async function run() {
         req.decoded = decoded;
         next()
       })
-    
+
     };
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
       const query = { email: email };
       const user = await usercollection.findOne(query);
-      
+
       const isAdmin = user?.role === 'Admin';
       if (!isAdmin) {
         return res.status(403).send({ message: 'Forbidden Access' })
@@ -90,9 +91,9 @@ async function run() {
     }
     // Payment------------------Start--
     app.post("/create-payment-intent", async (req, res) => {
-      const {price} = req.body;
-      // const amount = parseInt(price * 100);
-      const amount = parseInt(parseFloat(price) * 100);
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      // const amount = parseInt(parseFloat(price) * 100);
       console.log(amount)
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
@@ -103,18 +104,20 @@ async function run() {
         clientSecret: paymentIntent.client_secret
       })
     });
-    app.post('/cardpayment', async(req, res)=>{
+    app.post('/cardpayment', async (req, res) => {
       const payment = req.body;
       const paymentResult = await paymentscollection.insertOne(payment);
       // delete eatch item from the cart
-      const query = {_id:{
-        $in:payment.CartIds.map(id=> new ObjectId(id))
-      }};
+      const query = {
+        _id: {
+          $in: payment.CartIds.map(id => new ObjectId(id))
+        }
+      };
       const deleteResult = await cartscollection.deleteMany(query);
-      res.send({paymentResult, deleteResult})
+      res.send({ paymentResult, deleteResult })
     });
-    app.get('/cardpayment/recive/:email',verifyToken, async (req, res)=>{
-      const query = {email: req.params.email};
+    app.get('/cardpayment/recive/:email', verifyToken, async (req, res) => {
+      const query = { email: req.params.email };
       if (req.params.email !== req.decoded.email) {
         return res.status(403).send({ message: 'Forbidden Access' })
       }
@@ -124,6 +127,79 @@ async function run() {
 
 
     // Payment------------------END----
+    // Stats or Analyics------------Start
+    app.get('/admin-Analyics', async (req, res) => {
+      const users = await usercollection.estimatedDocumentCount();
+      const menus = await menucollection.estimatedDocumentCount();
+      const oders = await paymentscollection.estimatedDocumentCount();
+      const result = await paymentscollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray();
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+      res.send({
+        users,
+        menus,
+        oders,
+        revenue
+      })
+    });
+    // using Aggregate pip line for stats----
+    app.get('/order-stats', async (req, res) => {
+      
+      const result = await paymentscollection.aggregate([
+
+        {
+          $unwind: '$menuItemIds'
+        },
+        {
+          $lookup: {
+              from: "menu",
+              let: { menuItemId: { $toObjectId: "$menuItemIds" } },
+              pipeline: [
+                  {
+                      $match: {
+                          $expr: { $eq: ["$_id", "$$menuItemId"] }
+                      }
+                  }
+              ],
+              as: 'matchedMenuItems'
+          }
+      },
+        {
+          $unwind: '$matchedMenuItems'
+        },
+        {
+          $group: {
+            _id: '$matchedMenuItems.category',
+            quantity: {
+              $sum: 1
+            },
+            revenue: { $sum: '$matchedMenuItems.price' }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            category: '$_id',
+            quantity: '$quantity',
+            revenue: '$revenue'
+          }
+        }
+      ]).toArray();
+     
+      res.send(result)
+    });
+  
+    
+    
+    // Stats or Analyics------------END
 
     // Jwt Relate Api-----------
     app.post('/jwt', async (req, res) => {
@@ -139,7 +215,7 @@ async function run() {
       const query = { email: userData.email }
       const find = await usercollection.findOne(query);
       if (find) {
-        return ;
+        return;
       }
       const result = await usercollection.insertOne(userData);
       res.send(result);
@@ -184,7 +260,7 @@ async function run() {
       res.send({ admin });
     })
     // Post menu item ------------
-    app.post('/menu',  async (req, res) => {
+    app.post('/menu', async (req, res) => {
       const menulist = req.body;
       const result = await menucollection.insertOne(menulist);
       res.send(result)
